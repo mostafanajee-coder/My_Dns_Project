@@ -2,46 +2,103 @@ const targetErrors = ['net::ERR_CONNECTION_RESET', 'net::ERR_CONNECTION_CLOSED',
 const proxyErrors = ['net::ERR_TUNNEL_CONNECTION_FAILED', 'net::ERR_PROXY_CONNECTION_FAILED'];
 const ispBlockKeywords = ['block', 'intercept', 'restricted', 'warning'];
 let reloadAttempts = {};
+let isFindingProxy = false;
 let lastProxyFetchTime = 0;
 
-async function fetchFreeProxy() {
-  try {
-    // Fetching from a more advanced API that sorts by speed and latency
-    const res = await fetch('https://proxylist.geonode.com/api/proxy-list?limit=5&page=1&sort_by=speed&sort_type=asc&protocols=socks5,http&anonymityLevel=elite');
-    if (!res.ok) throw new Error("Geonode API failed");
-    
-    const json = await res.json();
-    if (json.data && json.data.length > 0) {
-      // Create an array of the top 3 fastest proxies for PAC failover
-      const topProxies = json.data.slice(0, 3).map(p => {
-        const type = p.protocols.includes('socks5') ? 'SOCKS5' : 'PROXY';
-        return `${type} ${p.ip}:${p.port}`;
-      });
-      return topProxies.join('; ');
-    }
-  } catch (e) {
-    console.error('Fast proxy fetch failed, falling back to basic list', e);
-    // Fallback to basic text list if API is down
+const proxySources = [
+  'https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/http.txt',
+  'https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/socks5.txt'
+];
+
+async function fetchRawProxies() {
+  let proxies = [];
+  for (const url of proxySources) {
     try {
-      const res2 = await fetch('https://raw.githubusercontent.com/TheSpeedX/SOCKS-List/master/http.txt');
-      const text = await res2.text();
-      const proxies = text.split('\n').filter(p => p.trim() !== '');
-      if (proxies.length > 0) {
-        return `PROXY ${proxies[5].trim()}; PROXY ${proxies[6].trim()}`;
-      }
-    } catch(err) {
-      console.error(err);
-    }
+      const res = await fetch(url);
+      const text = await res.text();
+      const list = text.split('\n').map(p => p.trim()).filter(p => p.includes(':'));
+      const type = url.includes('socks5') ? 'SOCKS5' : 'PROXY';
+      proxies.push(...list.map(p => `${type} ${p}`));
+    } catch(e) {}
   }
-  return null;
+  return proxies.sort(() => 0.5 - Math.random());
+}
+
+async function findFastestProxy() {
+  const proxies = await fetchRawProxies();
+  if (proxies.length === 0) return null;
+  
+  const batch = proxies.slice(0, 50); // Race 50 proxies simultaneously!
+  
+  let pacRules = '';
+  batch.forEach((proxy, index) => {
+    pacRules += `if (url.indexOf("proxy_test_id=${index}") !== -1) return "${proxy}";\n`;
+  });
+  
+  const testPacScript = `
+    function FindProxyForURL(url, host) {
+      ${pacRules}
+      return "DIRECT";
+    }
+  `;
+  
+  await new Promise(resolve => {
+    chrome.proxy.settings.set({ value: { mode: "pac_script", pacScript: { data: testPacScript } }, scope: 'regular' }, resolve);
+  });
+  
+  await new Promise(r => setTimeout(r, 500)); // Allow PAC to initialize
+  
+  const fetchPromises = batch.map((proxy, index) => {
+    return new Promise(async (resolve, reject) => {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => { controller.abort(); reject('Timeout'); }, 3000);
+      try {
+        await fetch(`https://1.1.1.1/?proxy_test_id=${index}`, { 
+          signal: controller.signal, 
+          cache: 'no-store',
+          mode: 'no-cors'
+        });
+        clearTimeout(timeout);
+        resolve(proxy); // The first one to resolve this wins!
+      } catch (e) {
+        clearTimeout(timeout);
+        reject(e);
+      }
+    });
+  });
+  
+  try {
+    const fastestProxy = await Promise.any(fetchPromises);
+    return fastestProxy;
+  } catch (e) {
+    return null;
+  }
+}
+
+async function executeProxyRace(tabId = null) {
+  if (isFindingProxy) return;
+  isFindingProxy = true;
+  await chrome.storage.local.set({ proxyStatus: "Racing 50 proxies..." });
+  
+  const fastestProxy = await findFastestProxy();
+  
+  if (fastestProxy) {
+    await chrome.storage.local.set({ proxyAddress: fastestProxy, proxyStatus: `Connected!` });
+    const data = await chrome.storage.local.get(['blockedDomains']);
+    updateProxySettings(data.blockedDomains || [], fastestProxy);
+    if (tabId > 0) setTimeout(() => chrome.tabs.reload(tabId), 1000);
+  } else {
+    await chrome.storage.local.set({ proxyStatus: "Race failed. Try again." });
+    chrome.proxy.settings.clear({scope: 'regular'});
+  }
+  isFindingProxy = false;
 }
 
 chrome.runtime.onInstalled.addListener(async (details) => {
   if (details.reason === 'install') {
     const defaultDomains = ['x.com', 'twitter.com', 'facebook.com', 'youtube.com', 'instagram.com', 'whatsapp.com', 'telegram.org', 'tiktok.com'];
     await chrome.storage.local.set({ blockedDomains: defaultDomains });
-    const freeProxy = await fetchFreeProxy();
-    if (freeProxy) await chrome.storage.local.set({ proxyAddress: freeProxy });
+    executeProxyRace();
   }
 });
 
@@ -50,7 +107,11 @@ chrome.webNavigation.onErrorOccurred.addListener(async (details) => {
     if (targetErrors.includes(details.error)) {
       await handleBlockedDomain(new URL(details.url).hostname, details.tabId);
     } else if (proxyErrors.includes(details.error)) {
-      await handleBadProxy(details.tabId);
+      const now = Date.now();
+      if (now - lastProxyFetchTime > 15000) {
+        lastProxyFetchTime = now;
+        executeProxyRace(details.tabId);
+      }
     }
   }
 });
@@ -65,7 +126,7 @@ chrome.webRequest.onBeforeRedirect.addListener(async (details) => {
 }, {urls: ["<all_urls>"]});
 
 async function handleBlockedDomain(domain, tabId) {
-  const data = await chrome.storage.local.get(['blockedDomains', 'proxyAddress']);
+  const data = await chrome.storage.local.get(['blockedDomains']);
   let domains = data.blockedDomains || [];
   
   if (!domains.includes(domain)) {
@@ -79,24 +140,10 @@ async function handleBlockedDomain(domain, tabId) {
   }
 }
 
-async function handleBadProxy(tabId) {
-  const now = Date.now();
-  if (now - lastProxyFetchTime > 15000) { // Fetch max once every 15s to prevent loops
-    lastProxyFetchTime = now;
-    const newProxy = await fetchFreeProxy();
-    if (newProxy) {
-      await chrome.storage.local.set({ proxyAddress: newProxy });
-      if (tabId > 0) setTimeout(() => chrome.tabs.reload(tabId), 1500);
-    } else {
-      chrome.proxy.settings.clear({scope: 'regular'});
-    }
-  }
-}
-
 chrome.storage.onChanged.addListener((changes, areaName) => {
-  if (areaName === 'local') {
-    chrome.storage.local.get(['blockedDomains', 'proxyAddress'], (data) => {
-      updateProxySettings(data.blockedDomains || [], data.proxyAddress);
+  if (areaName === 'local' && changes.proxyAddress && !isFindingProxy) {
+    chrome.storage.local.get(['blockedDomains'], (data) => {
+      updateProxySettings(data.blockedDomains || [], changes.proxyAddress.newValue);
     });
   }
 });
@@ -119,6 +166,12 @@ function updateProxySettings(domains, proxyAddress) {
       return "DIRECT";
     }
   `;
-
   chrome.proxy.settings.set({ value: { mode: "pac_script", pacScript: { data: pacScript } }, scope: 'regular' });
 }
+
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.action === "forceProxyRace") {
+    executeProxyRace();
+    sendResponse({started: true});
+  }
+});

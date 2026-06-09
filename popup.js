@@ -7,32 +7,20 @@ document.addEventListener('DOMContentLoaded', () => {
   const newDomainInput = document.getElementById('newDomain');
   const addDomainBtn = document.getElementById('addDomain');
 
-  chrome.storage.local.get(['proxyAddress', 'blockedDomains'], (data) => {
+  chrome.storage.local.get(['proxyAddress', 'blockedDomains', 'proxyStatus'], (data) => {
     if (data.proxyAddress) proxyInput.value = data.proxyAddress;
+    if (data.proxyStatus) document.getElementById('statusMsg').textContent = data.proxyStatus;
     renderDomains(data.blockedDomains || []);
   });
 
   saveBtn.addEventListener('click', () => chrome.storage.local.set({ proxyAddress: proxyInput.value }));
   
-  fetchProxyBtn.addEventListener('click', async () => {
-    fetchProxyBtn.textContent = 'Fetching Fastest Proxy...';
-    try {
-      const res = await fetch('https://proxylist.geonode.com/api/proxy-list?limit=5&page=1&sort_by=speed&sort_type=asc&protocols=socks5,http&anonymityLevel=elite');
-      if (!res.ok) throw new Error();
-      const json = await res.json();
-      if (json.data && json.data.length > 0) {
-        const topProxies = json.data.slice(0, 3).map(p => {
-          const type = p.protocols.includes('socks5') ? 'SOCKS5' : 'PROXY';
-          return `${type} ${p.ip}:${p.port}`;
-        });
-        const newProxyAddress = topProxies.join('; ');
-        chrome.storage.local.set({ proxyAddress: newProxyAddress });
-        proxyInput.value = newProxyAddress;
-      }
-    } catch(e) {
-      alert("Failed to fetch fast proxy");
-    }
-    fetchProxyBtn.textContent = 'Auto-Fetch New Free Proxy';
+  fetchProxyBtn.addEventListener('click', () => {
+    fetchProxyBtn.textContent = 'Racing...';
+    document.getElementById('statusMsg').textContent = "Starting proxy race...";
+    chrome.runtime.sendMessage({action: "forceProxyRace"}, () => {
+      setTimeout(() => { fetchProxyBtn.textContent = 'Auto-Fetch Fastest Free Proxy'; }, 2000);
+    });
   });
 
   clearBtn.addEventListener('click', () => chrome.storage.local.set({ blockedDomains: [] }));
@@ -52,8 +40,11 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   chrome.storage.onChanged.addListener((changes, area) => {
-    if (area === 'local' && changes.blockedDomains) renderDomains(changes.blockedDomains.newValue || []);
-    if (area === 'local' && changes.proxyAddress) proxyInput.value = changes.proxyAddress.newValue || '';
+    if (area === 'local') {
+      if (changes.blockedDomains) renderDomains(changes.blockedDomains.newValue || []);
+      if (changes.proxyAddress) proxyInput.value = changes.proxyAddress.newValue || '';
+      if (changes.proxyStatus) document.getElementById('statusMsg').textContent = changes.proxyStatus.newValue || '';
+    }
   });
 
   function renderDomains(domains) {
