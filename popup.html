@@ -4,17 +4,20 @@
   <meta charset="utf-8">
   <style>
     body { width: 320px; font-family: sans-serif; padding: 10px; }
-    input, button { width: 100%; margin-top: 5px; padding: 5px; box-sizing: border-box; }
+    input, button { width: 100%; margin-top: 5px; padding: 5px; box-sizing: border-box; cursor: pointer; }
     ul { list-style: none; padding: 0; max-height: 150px; overflow-y: auto; border: 1px solid #ccc; margin-top: 5px;}
     li { padding: 5px; border-bottom: 1px solid #ddd; font-size: 12px; display: flex; justify-content: space-between; align-items: center;}
-    .remove-btn { width: auto; margin: 0; padding: 2px 5px; background: red; color: white; border: none; cursor: pointer;}
+    .remove-btn { width: auto; margin: 0; padding: 2px 5px; background: red; color: white; border: none; }
     .add-domain-container { display: flex; gap: 5px; }
+    .btn-primary { background: #007bff; color: white; border: none; font-weight: bold; }
+    .btn-primary:hover { background: #0056b3; }
   </style>
 </head>
 <body>
   <h3>Proxy Config</h3>
   <input type="text" id="proxy" placeholder="PROXY ip:port or SOCKS5 ip:port">
   <button id="saveProxy">Save Proxy</button>
+  <button id="fetchProxyBtn" class="btn-primary">Auto-Fetch New Free Proxy</button>
   
   <h3>Blocked Domains</h3>
   <div class="add-domain-container">
