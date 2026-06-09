@@ -1,3 +1,4 @@
-# My_Dns_Project
+# Dynamic Smart Proxy Extension
 
-This is the initial setup for My_Dns_Project.
+A Chrome Extension (Manifest V3) to dynamically bypass ISP DPI/SNI blocking. 
+It detects connection drops and redirects, and selectively routes blocked domains through a specified proxy using a PAC script, with built-in sub-domain propagation and proxy fallback logic.

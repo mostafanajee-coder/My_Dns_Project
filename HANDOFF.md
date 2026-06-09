@@ -1,13 +1,13 @@
 # HANDOFF
 
-**Goal:** Build a "Dynamic Smart Proxy" Chrome Extension (Manifest V3) that detects DPI/SNI blocked domains (via specific connection resets) and selectively routes them through a user-defined proxy using a PAC script.
+**Goal:** Build a "Dynamic Smart Proxy" MV3 Extension to bypass ISP DPI/SNI blocking with advanced error detection, anti-loop mechanisms, and PAC subdomain propagation.
 
 **Key Files:**
-- `manifest.json`: Defines extension metadata and permissions.
-- `background.js`: Handles network error interception and dynamically generates the PAC script.
-- `popup.html`: Minimal UI for proxy configuration and domain listing.
-- `popup.js`: Logic for managing user input and storage interaction.
+- `manifest.json`: Added `webRequest` permissions for ISP block page detection.
+- `background.js`: Implements connection drop/timeout detection, ISP redirect blocks, anti-loop memory, and advanced PAC fallback logic.
+- `popup.html` & `popup.js`: Enhanced UI for proxy settings and manual domain management (add/remove).
+- `README.md`: Updated project documentation.
 
-**Next Steps:**
-- Extension is ready to be loaded unpacked into Chrome (`chrome://extensions/`).
-- Test against blocked domains to verify routing logic triggers.
+**Known Issues:** None currently.
+
+**Next Steps:** Test the extension against real ISP DPI blocks to verify redirect handling and PAC auto-configuration.

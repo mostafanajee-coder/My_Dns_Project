@@ -3,21 +3,26 @@
 <head>
   <meta charset="utf-8">
   <style>
-    body { width: 300px; font-family: sans-serif; padding: 10px; }
+    body { width: 320px; font-family: sans-serif; padding: 10px; }
     input, button { width: 100%; margin-top: 5px; padding: 5px; box-sizing: border-box; }
-    ul { list-style: none; padding: 0; max-height: 150px; overflow-y: auto; background: #f0f0f0; border: 1px solid #ccc; }
-    li { padding: 5px; border-bottom: 1px solid #ddd; font-size: 12px; }
+    ul { list-style: none; padding: 0; max-height: 150px; overflow-y: auto; border: 1px solid #ccc; margin-top: 5px;}
+    li { padding: 5px; border-bottom: 1px solid #ddd; font-size: 12px; display: flex; justify-content: space-between; align-items: center;}
+    .remove-btn { width: auto; margin: 0; padding: 2px 5px; background: red; color: white; border: none; cursor: pointer;}
+    .add-domain-container { display: flex; gap: 5px; }
   </style>
 </head>
 <body>
   <h3>Proxy Config</h3>
-  <label for="proxy">Proxy Address (e.g., PROXY 1.2.3.4:8080):</label>
   <input type="text" id="proxy" placeholder="PROXY ip:port or SOCKS5 ip:port">
   <button id="saveProxy">Save Proxy</button>
   
   <h3>Blocked Domains</h3>
+  <div class="add-domain-container">
+    <input type="text" id="newDomain" placeholder="example.com">
+    <button id="addDomain" style="width: auto;">Add</button>
+  </div>
   <ul id="domainList"></ul>
-  <button id="clearDomains">Clear Domains</button>
+  <button id="clearDomains">Clear All Domains</button>
   
   <script src="popup.js"></script>
 </body>
