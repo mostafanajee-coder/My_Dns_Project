@@ -2,6 +2,25 @@ const targetErrors = ['net::ERR_CONNECTION_RESET', 'net::ERR_CONNECTION_CLOSED',
 const ispBlockKeywords = ['block', 'intercept', 'restricted', 'warning'];
 let reloadAttempts = {};
 
+chrome.runtime.onInstalled.addListener(async (details) => {
+  if (details.reason === 'install') {
+    const defaultDomains = ['x.com', 'twitter.com', 'facebook.com', 'youtube.com', 'instagram.com', 'whatsapp.com', 'telegram.org', 'tiktok.com'];
+    await chrome.storage.local.set({ blockedDomains: defaultDomains });
+    
+    // Auto-fetch a free proxy to work out of the box
+    try {
+      const res = await fetch('https://api.proxyscrape.com/v2/?request=displayproxies&protocol=http&timeout=5000&ssl=yes&anonymity=elite');
+      const text = await res.text();
+      const proxies = text.split('\n').filter(p => p.trim() !== '');
+      if (proxies.length > 0) {
+        await chrome.storage.local.set({ proxyAddress: `PROXY ${proxies[0].trim()}` });
+      }
+    } catch (e) {
+      console.error('Proxy fetch failed', e);
+    }
+  }
+});
+
 chrome.webNavigation.onErrorOccurred.addListener(async (details) => {
   if (details.frameId === 0 && targetErrors.includes(details.error)) {
     await handleBlockedDomain(new URL(details.url).hostname, details.tabId);
