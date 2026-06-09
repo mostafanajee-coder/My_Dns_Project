@@ -6,15 +6,32 @@ let lastProxyFetchTime = 0;
 
 async function fetchFreeProxy() {
   try {
-    const res = await fetch('https://api.proxyscrape.com/v2/?request=displayproxies&protocol=http&timeout=5000&ssl=yes&anonymity=elite');
-    const text = await res.text();
-    const proxies = text.split('\n').filter(p => p.trim() !== '');
-    if (proxies.length > 0) {
-      const randomProxy = proxies[Math.floor(Math.random() * Math.min(10, proxies.length))].trim();
-      return `PROXY ${randomProxy}`;
+    // Fetching from a more advanced API that sorts by speed and latency
+    const res = await fetch('https://proxylist.geonode.com/api/proxy-list?limit=5&page=1&sort_by=speed&sort_type=asc&protocols=socks5,http&anonymityLevel=elite');
+    if (!res.ok) throw new Error("Geonode API failed");
+    
+    const json = await res.json();
+    if (json.data && json.data.length > 0) {
+      // Create an array of the top 3 fastest proxies for PAC failover
+      const topProxies = json.data.slice(0, 3).map(p => {
+        const type = p.protocols.includes('socks5') ? 'SOCKS5' : 'PROXY';
+        return `${type} ${p.ip}:${p.port}`;
+      });
+      return topProxies.join('; ');
     }
   } catch (e) {
-    console.error('Proxy fetch failed', e);
+    console.error('Fast proxy fetch failed, falling back to basic list', e);
+    // Fallback to basic text list if API is down
+    try {
+      const res2 = await fetch('https://raw.githubusercontent.com/TheSpeedX/SOCKS-List/master/http.txt');
+      const text = await res2.text();
+      const proxies = text.split('\n').filter(p => p.trim() !== '');
+      if (proxies.length > 0) {
+        return `PROXY ${proxies[5].trim()}; PROXY ${proxies[6].trim()}`;
+      }
+    } catch(err) {
+      console.error(err);
+    }
   }
   return null;
 }
